@@ -1,87 +1,117 @@
-import telebot
-import requests
-import threading
-import json
-import os
+import subprocess
+import sys
+subprocess.check_call([sys.executable, "-m", "pip", "install", "pyTelegramBotAPI", "feedparser", "flask", "requests"])
+
+import telebot, threading, time, requests, xml.etree.ElementTree as ET, json, os
 from flask import Flask
+from threading import Thread
 
-# ================== غير ال 3 دول بس ==================
-BOT_TOKEN = "8086458846:AAFXtMvK1wV7x3n3gH7aHvXK5aJ9bK9bK9b"
-GEMINI_API_KEY = "AQ.Ab8RN6IWuXyDLT99C6rGylP_wa_EHbCJIO7riHaBYE-Bdui9zg"
-SECRET_KEY = "7713033"
-BOT_NAME = "GPChat' شات جي بي تي"
-# ======================================================
+TOKEN = os.getenv("BOT_TOKEN") # مهم: خليه يقرا من المتغيرات
+ADMIN_ID = 5529009159
+CHANNEL_ID = -1002539926427
+CHANNEL_LINK = "https://t.me/SmartAI_Ar" 
+BLOG_URL = "https://sohailaegency.blogspot.com"
+SETTINGS_FILE = "settings.json"
 
-USERS_FILE = "users.json"
-app = Flask(__name__)
-bot = telebot.TeleBot(BOT_TOKEN)
-
-def load_users():
-    if os.path.exists(USERS_FILE):
-        with open(USERS_FILE, "r") as f:
-            return set(json.load(f))
-    return set()
-
-def save_users(users):
-    with open(USERS_FILE, "w") as f:
-        json.dump(list(users), f)
-
-subscribed_users = load_users()
-
-def check_subscription(user_id):
-    return user_id in subscribed_users
-
-# ==== الرابط اللي صفحة بلوجر هتستدعيه بعد الاعلان ====
-@app.route('/activate/<int:user_id>/<key>')
-def activate(user_id, key):
-    if key == SECRET_KEY:
-        subscribed_users.add(user_id)
-        save_users(subscribed_users)
-        return "OK"
-    return "ERROR", 403
-
+app = Flask('')
 @app.route('/')
-def home():
-    return "GPChat Bot is Running"
+def home(): return "Bot Running"
+def run_server(): app.run(host='0.0.0.0', port=8080)
+
+def load_settings():
+    if os.path.exists(SETTINGS_FILE):
+        with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
+    return {"force_msg": "⚠️ **اشتراك اجباري**\n\nلازم تشترك في قناة SmartAI_Ar\nبعد الاشتراك اضغط تحقق", "ad_text": "🔥 تابعونا @SmartAI_Ar 🔥\nhttps://t.me/SmartAI_Ar", "bots_list": "🤖 *بوتاتنا:*\n@SmartAI_Ar", "ad_interval": 24, "last_ad_time": 0}
+
+def save_settings(s): 
+    with open(SETTINGS_FILE, 'w', encoding='utf-8') as f: json.dump(s, f, ensure_ascii=False, indent=4)
+
+settings = load_settings()
+bot = telebot.TeleBot(TOKEN)
+user_step = {}
+
+def check_sub(uid):
+    try: return bot.get_chat_member(CHANNEL_ID, uid).status in ['member', 'administrator', 'creator']
+    except: return False
+
+def send_join(cid):
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(telebot.types.InlineKeyboardButton("🔔 اشترك", url=CHANNEL_LINK))
+    markup.add(telebot.types.InlineKeyboardButton("✅ تحقق", callback_data="check_sub"))
+    bot.send_message(cid, settings["force_msg"], reply_markup=markup, parse_mode="Markdown")
+
+def admin_panel():
+    m = telebot.types.InlineKeyboardMarkup(row_width=2)
+    m.add(telebot.types.InlineKeyboardButton("✏️ رسالة الاشتراك", callback_data="edit_force"), telebot.types.InlineKeyboardButton("📢 نشر اعلان", callback_data="send_ad"), telebot.types.InlineKeyboardButton("📝 تعديل الاعلان", callback_data="edit_ad"), telebot.types.InlineKeyboardButton("🤖 قائمة البوتات", callback_data="edit_bots"), telebot.types.InlineKeyboardButton("⏰ وقت الاعلان", callback_data="edit_time"))
+    return m
+
+@bot.message_handler(commands=['admin'])
+def admin(m):
+    if m.from_user.id != ADMIN_ID: return
+    bot.send_message(m.chat.id, "👑 لوحة التحكم", reply_markup=admin_panel(), parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda c: True)
+def cb(c):
+    global settings
+    if c.data == "check_sub":
+        if check_sub(c.from_user.id): bot.answer_callback_query(c.id, "✅ تم"); bot.send_message(c.message.chat.id, "/blog - مقالات\n/bots - بوتات")
+        else: bot.answer_callback_query(c.id, "❌ اشترك اول", show_alert=True)
+        return
+    if c.from_user.id != ADMIN_ID: return
+    txt = {"edit_force": "ارسل رسالة الاشتراك", "send_ad": "ارسل الاعلان", "edit_ad": f"الحالي:\n{settings['ad_text']}\nارسل الجديد", "edit_bots": f"الحالي:\n{settings['bots_list']}\nارسل الجديد", "edit_time": f"الحالي: {settings['ad_interval']} ساعة"}
+    if c.data in txt: bot.send_message(c.message.chat.id, txt[c.data]); user_step[c.from_user.id] = c.data
+
+@bot.message_handler(func=lambda m: m.from_user.id in user_step)
+def input_admin(m):
+    global settings
+    s = user_step[m.from_user.id]
+    if s == "edit_force": settings["force_msg"] = m.text
+    elif s == "send_ad": bot.send_message(CHANNEL_ID, m.text); bot.reply_to(m, "✅ تم"); del user_step[m.from_user.id]; return
+    elif s == "edit_ad": settings["ad_text"] = m.text
+    elif s == "edit_bots": settings["bots_list"] = m.text
+    elif s == "edit_time": settings["ad_interval"] = int(m.text)
+    save_settings(settings); bot.reply_to(m, "✅ تم"); del user_step[m.from_user.id]
 
 @bot.message_handler(commands=['start'])
-def start(message):
-    user_id = message.from_user.id
-    if check_subscription(user_id):
-        bot.send_message(user_id, f"مرحبا بيك في {BOT_NAME} 😎\nاسألني اي شي")
-    else:
-       # غير رابط مدونتك هنا
-        blog_link = f"https://sohailaegency.blogspot.com/2026/08/blog-post_12.html}"
-        markup = telebot.types.InlineKeyboardMarkup()
-        markup.add(telebot.types.InlineKeyboardButton("تفعيل البوت من المدونة", url=blog_link))
-        bot.send_message(user_id,
-            f"اهلا في {BOT_NAME}\n\n"
-            f"عشان تستخدم البوت لازم تدخل المدونة وتشاهد الاعلان الاول 👇",
-            reply_markup=markup)
+def start(m):
+    if not check_sub(m.from_user.id): send_join(m.chat.id); bot.send_message(ADMIN_ID, f"🆕 جديد: {m.from_user.first_name} | @{m.from_user.username} | {m.from_user.id}"); return
+    bot.reply_to(m, "/blog - مقالات\n/bots - بوتات")
 
-@bot.message_handler(func=lambda m: True)
-def chat(message):
-    user_id = message.from_user.id
-    if not check_subscription(user_id):
-        bot.reply_to(message, "لازم تفعل من المدونة الاول")
-        return
-
-    bot.send_chat_action(message.chat.id, 'typing')
-    reply = ask_gemini(message.text)
-    bot.reply_to(message, reply)
-
-def ask_gemini(prompt):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-    data = {"contents": [{"parts": [{"text": prompt}]}]}
+@bot.message_handler(commands=['blog'])
+def blog(m):
+    if not check_sub(m.from_user.id): return send_join(m.chat.id)
     try:
-        res = requests.post(url, json=data, timeout=30)
-        return res.json()['candidates'][0]['content']['parts'][0]['text']
-    except:
-        return "حصل خطأ. حاول تاني"
+        r = requests.get(BLOG_URL + "/feeds/posts/default?max-results=3", timeout=15); root = ET.fromstring(r.content); ns = {'atom': 'http://www.w3.org/2005/Atom'}; e = root.findall('atom:entry', ns)
+        t = "📰 *اخر 3 مقالات*\n\n"
+        for x in e[:3]: t += f"🔹 [{x.find('atom:title', ns).text}]({x.find('atom:link[@rel=\"alternate\"]', ns).get('href')})\n\n"
+        bot.send_message(m.chat.id, t, parse_mode="Markdown")
+    except: bot.send_message(m.chat.id, "❌ خطأ")
 
-def run_bot():
-    bot.polling(none_stop=True)
+@bot.message_handler(commands=['bots'])
+def bots(m):
+    if not check_sub(m.from_user.id): return send_join(m.chat.id)
+    bot.send_message(m.chat.id, settings["bots_list"], parse_mode="Markdown")
 
-if __name__ == "__main__":
-    threading.Thread(target=run_bot).start()
-    app.run(host="0.0.0.0", port=8080)
+def ad(): 
+    try: bot.send_message(CHANNEL_ID, settings["ad_text"])
+    except Exception as e: print("Ad Error:", e)
+
+def ad_scheduler():
+    global settings
+    while True:
+        now = time.time()
+        if now - settings.get("last_ad_time", 0) >= settings["ad_interval"] * 3600:
+            ad()
+            settings["last_ad_time"] = now
+            save_settings(settings)
+        time.sleep(60)
+
+if __name__ == '__main__':
+    Thread(target=run_server, daemon=True).start()
+    Thread(target=ad_scheduler, daemon=True).start()
+    while True:
+        try:
+            bot.infinity_polling(none_stop=True, timeout=60, long_polling_timeout=60)
+        except Exception as e:
+            print("Polling Error:", e)
+            time.sleep(5)
