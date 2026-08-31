@@ -17,7 +17,7 @@ BLOG_URL = "https://sohailaegency.blogspot.com"
 SETTINGS_FILE = "settings.json"
 
 genai.configure(api_key=GEMINI_API_KEY)
-text_model = genai.GenerativeModel('gemini-2.0-flash') # <-- تم التعديل هنا
+text_model = genai.GenerativeModel('gemini-3.6-flash') # <-- اخر اصدار
 image_model = genai.GenerativeModel('gemini-2.0-flash-exp-image-generation')
 
 app = Flask('')
@@ -75,7 +75,7 @@ def ask_gemini(m, question):
         bot.edit_message_text(response.text + "\n\n@SmartAI_Ar", m.chat.id, msg.message_id)
     except Exception as e:
         print("GEMINI ERROR:", e)
-        bot.edit_message_text(f"❌ خطأ في Gemini: {e}", m.chat.id, msg.message_id)
+        bot.edit_message_text(f"❌ خطأ: {e}", m.chat.id, msg.message_id)
 
 @bot.message_handler(commands=['image'])
 def cmd_image(m):
@@ -94,7 +94,6 @@ def cmd_image(m):
                 bot.send_photo(m.chat.id, img_bytes, caption=prompt)
                 bot.delete_message(m.chat.id, msg.message_id)
     except Exception as e:
-        print("IMAGE ERROR:", e)
         bot.edit_message_text(f"❌ فشل الرسم: {e}", m.chat.id, msg.message_id)
 
 @bot.message_handler(commands=['blog'])
