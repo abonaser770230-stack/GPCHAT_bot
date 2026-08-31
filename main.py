@@ -202,6 +202,23 @@ def ad_scheduler():
 # ========= تشغيل البوت =========
 if __name__ == '__main__':
     Thread(target=run_server, daemon=True).start()
+    # ========= الرد على اي رسالة نصية =========
+@bot.message_handler(func=lambda message: True)
+def handle_all_messages(message):
+    if not check_sub(message.from_user.id): return send_join(message.chat.id)
+    
+    # لو الادمن بيعدل حاجة نتجاهل
+    if message.from_user.id in user_step: return
+    
+    # اي رسالة عادية هنعتبرها سؤال للذكاء
+    question = message.text
+    msg = bot.reply_to(message, "🤖 بفكر في سؤالك...")
+    try:
+        response = text_model.generate_content(question)
+        full_answer = f"{response.text}\n\n---\n🔥 تابع شروحات AI يومياً: @SmartAI_Ar"
+        bot.edit_message_text(full_answer, message.chat.id, msg.message_id)
+    except: 
+        bot.edit_message_text("❌ حصل خطأ. جرب سؤال ثاني", message.chat.id, msg.message_id)
     Thread(target=ad_scheduler, daemon=True).start()
     print("البوت شغال...")
     while True:
