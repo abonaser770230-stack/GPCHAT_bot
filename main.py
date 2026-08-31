@@ -2,7 +2,7 @@ import subprocess
 import sys
 subprocess.check_call([sys.executable, "-m", "pip", "install", "pyTelegramBotAPI", "feedparser", "flask", "requests", "google-generativeai", "pillow"])
 
-import telebot, threading, time, requests, xml.etree.ElementTree as ET, json, os, io, traceback
+import telebot, threading, time, requests, xml.etree.ElementTree as ET, json, os, io
 import google.generativeai as genai
 from flask import Flask
 from threading import Thread
@@ -16,12 +16,8 @@ CHANNEL_LINK = "https://t.me/SmartAI_Ar"
 BLOG_URL = "https://sohailaegency.blogspot.com"
 SETTINGS_FILE = "settings.json"
 
-print("TOKEN exists:", bool(TOKEN))
-print("GEMINI exists:", bool(GEMINI_API_KEY))
-
 genai.configure(api_key=GEMINI_API_KEY)
-text_model = genai.GenerativeModel('gemini-1.5-flash')
-# عدلت اسم موديل الصور للجديد
+text_model = genai.GenerativeModel('gemini-2.0-flash') # <-- تم التعديل هنا
 image_model = genai.GenerativeModel('gemini-2.0-flash-exp-image-generation')
 
 app = Flask('')
@@ -30,7 +26,7 @@ def home(): return "Bot Running"
 def run_server(): app.run(host='0.0.0.0', port=8080)
 
 def load_settings():
-    default = {"force_msg": "⚠️ اشتراك اجباري", "ad_text": "🔥 @SmartAI_Ar", "bots_list": "🤖 @SmartAI_Ar", "ad_interval": 24, "last_ad_time": 0}
+    default = {"force_msg": "⚠️ اشتراك اجباري في @SmartAI_Ar", "ad_text": "🔥 @SmartAI_Ar", "bots_list": "🤖 @SmartAI_Ar", "ad_interval": 24, "last_ad_time": 0}
     if os.path.exists(SETTINGS_FILE):
         with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
     save_settings(default)
@@ -78,8 +74,7 @@ def ask_gemini(m, question):
         response = text_model.generate_content(question)
         bot.edit_message_text(response.text + "\n\n@SmartAI_Ar", m.chat.id, msg.message_id)
     except Exception as e:
-        print("GEMINI ERROR:", e) # مهم: هيظهر في Logs Railway
-        traceback.print_exc()
+        print("GEMINI ERROR:", e)
         bot.edit_message_text(f"❌ خطأ في Gemini: {e}", m.chat.id, msg.message_id)
 
 @bot.message_handler(commands=['image'])
