@@ -4,4 +4,3 @@ flask==3.0.3
 requests==2.32.3
 google-generativeai==0.8.3
 pillow==10.4.0
-schedule==1.2.2
