@@ -1,28 +1,25 @@
-import telebot, threading, time, requests, xml.etree.ElementTree as ET, json, os, io
+import json, os, io, requests, xml.etree.ElementTree as ET
+from flask import Flask, request
+import telebot
 import google.generativeai as genai
-from flask import Flask
-from threading import Thread
 from PIL import Image
 
-TOKEN = os.getenv("BOT_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+app = Flask(__name__)
+
+TOKEN = os.environ.get("BOT_TOKEN")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 ADMIN_ID = 5529009159
 CHANNEL_ID = -1002539926427
 CHANNEL_LINK = "https://t.me/SmartAI_Ar"
 BLOG_URL = "https://sohailaegency.blogspot.com"
-SETTINGS_FILE = "settings.json"
+SETTINGS_FILE = "/tmp/settings.json" # مهم: كلاودفلير يستخدم /tmp
 
 genai.configure(api_key=GEMINI_API_KEY)
-text_model = genai.GenerativeModel('gemini-3.6-flash')
-image_model = genai.GenerativeModel('gemini-3.6-flash')
-
-app = Flask('')
-@app.route('/')
-def home(): return "Bot Running"
-def run_server(): app.run(host='0.0.0.0', port=8080)
+text_model = genai.GenerativeModel('gemini-1.5-flash')
+image_model = genai.GenerativeModel('gemini-1.5-flash')
 
 def load_settings():
-    default = {"force_msg": "⚠️ **اشتراك اجباري**\n\nلازم تشترك في @SmartAI_Ar", "ad_text": "🔥 تابعونا @SmartAI_Ar", "bots_list": "🤖 *بوتاتنا:*\n@SmartAI_Ar", "ad_interval": 24, "last_ad_time": 0}
+    default = {"force_msg": "⚠️ **اشتراك اجباري**\n\nلازم تشترك في @SmartAI_Ar", "ad_text": "🔥 تابعونا @SmartAI_Ar", "bots_list": "🤖 *بوتاتنا:*\n@SmartAI_Ar", "ad_interval": 24}
     if os.path.exists(SETTINGS_FILE):
         with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
     save_settings(default)
@@ -49,6 +46,14 @@ def admin_panel():
     m = telebot.types.InlineKeyboardMarkup(row_width=2)
     m.add(telebot.types.InlineKeyboardButton("✏️ رسالة الاشتراك", callback_data="edit_force"), telebot.types.InlineKeyboardButton("📢 نشر اعلان", callback_data="send_ad"), telebot.types.InlineKeyboardButton("📝 تعديل الاعلان", callback_data="edit_ad"), telebot.types.InlineKeyboardButton("🤖 قائمة البوتات", callback_data="edit_bots"), telebot.types.InlineKeyboardButton("⏰ وقت الاعلان", callback_data="edit_time"))
     return m
+
+@app.route(f'/{TOKEN}', methods=['POST'])
+def webhook():
+    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
+    return "ok", 200
+
+@app.route('/')
+def home(): return "Bot Running on Cloudflare"
 
 @bot.message_handler(commands=['admin'])
 def admin(m):
@@ -99,10 +104,10 @@ def handle_text(m):
     ask_gemini(m, m.text)
 
 def ask_gemini(m, question):
-    bot.send_chat_action(m.chat.id, 'typing') # يوري "جاري الكتابة"
+    bot.send_chat_action(m.chat.id, 'typing')
     msg = bot.reply_to(m, "🤖 جاري التفكير...")
     try:
-        response = text_model.generate_content(f"جاوب باختصار وبمباشرة: {question}") # رد مختصر اسرع
+        response = text_model.generate_content(f"جاوب باختصار وبمباشرة: {question}")
         bot.edit_message_text(response.text + "\n\n@SmartAI_Ar", m.chat.id, msg.message_id)
     except Exception as e:
         bot.edit_message_text(f"❌ خطأ: {e}", m.chat.id, msg.message_id)
@@ -140,18 +145,3 @@ def blog(m):
 def bots(m):
     if not check_sub(m.from_user.id): return send_join(m.chat.id)
     bot.send_message(m.chat.id, settings["bots_list"], parse_mode="Markdown")
-
-def ad_scheduler():
-    global settings
-    while True:
-        now = time.time()
-        if now - settings.get("last_ad_time", 0) >= settings["ad_interval"] * 3600:
-            try: bot.send_message(CHANNEL_ID, settings["ad_text"])
-            except: pass
-            settings["last_ad_time"] = now; save_settings(settings)
-        time.sleep(60)
-
-if __name__ == '__main__':
-    Thread(target=run_server, daemon=True).start()
-    Thread(target=ad_scheduler, daemon=True).start()
-    bot.infinity_polling()
