@@ -1,2 +1,3 @@
 python-telegram-bot==20.7
-feedparser
+groq==0.4.2
+requests==2.31.0
