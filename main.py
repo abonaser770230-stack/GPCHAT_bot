@@ -1,147 +1,32 @@
-import json, os, io, requests, xml.etree.ElementTree as ET
-from flask import Flask, request
-import telebot
-import google.generativeai as genai
-from PIL import Image
+import os
+from pyrogram import Client, filters
 
-app = Flask(__name__)
+API_ID = int(os.environ.get("API_ID", 0))
+API_HASH = os.environ.get("API_HASH", "")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
-TOKEN = os.environ.get("BOT_TOKEN")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-ADMIN_ID = 5529009159
-CHANNEL_ID = -1002539926427
-CHANNEL_LINK = "https://t.me/SmartAI_Ar"
-BLOG_URL = "https://sohailaegency.blogspot.com"
-SETTINGS_FILE = "/tmp/settings.json" # مهم: كلاودفلير يستخدم /tmp
+if not API_ID or not API_HASH or not BOT_TOKEN:
+    print("❌ Variables ناقصة! ضيف API_ID و API_HASH و BOT_TOKEN في Railway")
+    exit(1)
 
-genai.configure(api_key=GEMINI_API_KEY)
-text_model = genai.GenerativeModel('gemini-1.5-flash')
-image_model = genai.GenerativeModel('gemini-1.5-flash')
+app = Client(
+    "GPCHAT_bot",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN
+)
 
-def load_settings():
-    default = {"force_msg": "⚠️ **اشتراك اجباري**\n\nلازم تشترك في @SmartAI_Ar", "ad_text": "🔥 تابعونا @SmartAI_Ar", "bots_list": "🤖 *بوتاتنا:*\n@SmartAI_Ar", "ad_interval": 24}
-    if os.path.exists(SETTINGS_FILE):
-        with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
-    save_settings(default)
-    return default
+@app.on_message(filters.command("start") & filters.private)
+async def start(client, message):
+    await message.reply_text(
+        "✅ البوت شغال تمام!\n\n"
+        "أهلاً بك في GPCHAT_bot 🚀\n"
+        "أرسل /help للمساعدة"
+    )
 
-def save_settings(s):
-    with open(SETTINGS_FILE, 'w', encoding='utf-8') as f: json.dump(s, f, ensure_ascii=False, indent=4)
+@app.on_message(filters.command("help") & filters.private)
+async def help_cmd(client, message):
+    await message.reply_text("🆘 هذا البوت شغال على Railway\nالكود جاهز للتطوير")
 
-settings = load_settings()
-bot = telebot.TeleBot(TOKEN)
-user_step = {}
-
-def check_sub(uid):
-    try: return bot.get_chat_member(CHANNEL_ID, uid).status in ['member', 'administrator', 'creator']
-    except: return False
-
-def send_join(cid):
-    markup = telebot.types.InlineKeyboardMarkup()
-    markup.add(telebot.types.InlineKeyboardButton("🔔 اشترك", url=CHANNEL_LINK))
-    markup.add(telebot.types.InlineKeyboardButton("✅ تحقق", callback_data="check_sub"))
-    bot.send_message(cid, settings["force_msg"], reply_markup=markup, parse_mode="Markdown")
-
-def admin_panel():
-    m = telebot.types.InlineKeyboardMarkup(row_width=2)
-    m.add(telebot.types.InlineKeyboardButton("✏️ رسالة الاشتراك", callback_data="edit_force"), telebot.types.InlineKeyboardButton("📢 نشر اعلان", callback_data="send_ad"), telebot.types.InlineKeyboardButton("📝 تعديل الاعلان", callback_data="edit_ad"), telebot.types.InlineKeyboardButton("🤖 قائمة البوتات", callback_data="edit_bots"), telebot.types.InlineKeyboardButton("⏰ وقت الاعلان", callback_data="edit_time"))
-    return m
-
-@app.route(f'/{TOKEN}', methods=['POST'])
-def webhook():
-    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return "ok", 200
-
-@app.route('/')
-def home(): return "Bot Running on Cloudflare"
-
-@bot.message_handler(commands=['admin'])
-def admin(m):
-    if m.from_user.id!= ADMIN_ID: return
-    bot.send_message(m.chat.id, "👑 *لوحة تحكم الادمن*", reply_markup=admin_panel(), parse_mode="Markdown")
-
-@bot.callback_query_handler(func=lambda c: True)
-def cb(c):
-    global settings
-    if c.data == "check_sub":
-        if check_sub(c.from_user.id): bot.answer_callback_query(c.id, "✅ تم"); bot.delete_message(c.message.chat.id, c.message_id); bot.send_message(c.message.chat.id, "اهلا! ارسل سؤالك مباشرة")
-        else: bot.answer_callback_query(c.id, "❌ اشترك اول", show_alert=True)
-        return
-    if c.from_user.id!= ADMIN_ID: return
-    txt = {"edit_force": "ارسل رسالة الاشتراك", "send_ad": "ارسل الاعلان", "edit_ad": f"الحالي:\n{settings['ad_text']}", "edit_bots": f"الحالي:\n{settings['bots_list']}", "edit_time": f"الحالي: {settings['ad_interval']} ساعة"}
-    if c.data == "send_ad": bot.send_message(CHANNEL_ID, settings["ad_text"]); bot.answer_callback_query(c.id, "✅ تم")
-    elif c.data in txt: bot.send_message(c.message.chat.id, txt[c.data]); user_step[c.from_user.id] = c.data
-
-@bot.message_handler(func=lambda m: m.from_user.id in user_step)
-def input_admin(m):
-    global settings
-    s = user_step[m.from_user.id]
-    if s == "edit_force": settings["force_msg"] = m.text
-    elif s == "edit_ad": settings["ad_text"] = m.text
-    elif s == "edit_bots": settings["bots_list"] = m.text
-    elif s == "edit_time":
-        try: settings["ad_interval"] = int(m.text)
-        except: bot.reply_to(m, "❌ رقم فقط"); return
-    save_settings(settings); bot.reply_to(m, "✅ تم"); del user_step[m.from_user.id]
-
-@bot.message_handler(commands=['start'])
-def start(m):
-    if not check_sub(m.from_user.id): return send_join(m.chat.id)
-    bot.reply_to(m, "مرحبا 👋\nارسل سؤالك مباشرة\n/ai\n/image\n/blog\n/bots")
-
-@bot.message_handler(commands=['ai'])
-def cmd_ai(m):
-    if not check_sub(m.from_user.id): return send_join(m.chat.id)
-    question = m.text.replace("/ai ", "").strip()
-    if not question: return bot.reply_to(m, "مثال: `/ai اشرحلي`", parse_mode="Markdown")
-    ask_gemini(m, question)
-
-@bot.message_handler(content_types=['text'])
-def handle_text(m):
-    if not check_sub(m.from_user.id): return send_join(m.chat.id)
-    if m.from_user.id in user_step: return
-    if m.text.startswith('/'): return
-    ask_gemini(m, m.text)
-
-def ask_gemini(m, question):
-    bot.send_chat_action(m.chat.id, 'typing')
-    msg = bot.reply_to(m, "🤖 جاري التفكير...")
-    try:
-        response = text_model.generate_content(f"جاوب باختصار وبمباشرة: {question}")
-        bot.edit_message_text(response.text + "\n\n@SmartAI_Ar", m.chat.id, msg.message_id)
-    except Exception as e:
-        bot.edit_message_text(f"❌ خطأ: {e}", m.chat.id, msg.message_id)
-
-@bot.message_handler(commands=['image'])
-def cmd_image(m):
-    if not check_sub(m.from_user.id): return send_join(m.chat.id)
-    prompt = m.text.replace("/image ", "").strip()
-    if not prompt: return bot.reply_to(m, "مثال: `/image لوجو`", parse_mode="Markdown")
-    msg = bot.reply_to(m, "🎨 برسم...")
-    try:
-        response = image_model.generate_content(f"Generate an image: {prompt}")
-        for part in response.parts:
-            if part.inline_data:
-                image = Image.open(io.BytesIO(part.inline_data.data))
-                img_bytes = io.BytesIO()
-                image.save(img_bytes, format='PNG')
-                img_bytes.seek(0)
-                bot.send_photo(m.chat.id, img_bytes, caption=prompt)
-                bot.delete_message(m.chat.id, msg.message_id)
-    except Exception as e:
-        bot.edit_message_text(f"❌ فشل الرسم: {e}", m.chat.id, msg.message_id)
-
-@bot.message_handler(commands=['blog'])
-def blog(m):
-    if not check_sub(m.from_user.id): return send_join(m.chat.id)
-    try:
-        r = requests.get(BLOG_URL + "/feeds/posts/default?max-results=3", timeout=15); root = ET.fromstring(r.content); ns = {'atom': 'http://www.w3.org/2005/Atom'}; e = root.findall('atom:entry', ns)
-        t = "📰 *اخر 3 مقالات*\n\n"
-        for x in e[:3]: t += f"🔹 [{x.find('atom:title', ns).text}]({x.find('atom:link[@rel=\"alternate\"]', ns).get('href')})\n\n"
-        bot.send_message(m.chat.id, t, parse_mode="Markdown", disable_web_page_preview=True)
-    except: bot.send_message(m.chat.id, "❌ خطأ")
-
-@bot.message_handler(commands=['bots'])
-def bots(m):
-    if not check_sub(m.from_user.id): return send_join(m.chat.id)
-    bot.send_message(m.chat.id, settings["bots_list"], parse_mode="Markdown")
+print("🚀 Bot is starting...")
+app.run()
