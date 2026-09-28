@@ -4,7 +4,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 from openai import AsyncOpenAI
 
 TOKEN = os.getenv("BOT_TOKEN")
-GROQ_KEY = os.getenv("GROQ_API_KEY") or "gsk_Qoue63WyWGdyb3FYuXX1XPisy5IZnvUROfzp3Cyp"
+GROQ_KEY = os.getenv("GROQ_API_KEY") or"gsk_TXVAiIdgQoue63WyWGdyb3FYuXX1XPisy5IZnvUROfzp3Cyp"
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
 FINANCE_CHANNEL_URL = "https://t.me/SmartAI_Ar"
