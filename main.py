@@ -1,4 +1,8 @@
-import os, json, logging, time, asyncio
+import os
+import json
+import logging
+import time
+import asyncio
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from groq import Groq
@@ -14,28 +18,44 @@ print(f"GROQ_KEY exists: {bool(GROQ_KEY)}")
 
 client = Groq(api_key=GROQ_KEY) if GROQ_KEY else None
 
-POINTS_FILE, BROADCAST_FILE, MEMORY_FILE, DAILY_FILE = "points.json", "broadcasts.json", "memory.json", "daily.json"
+POINTS_FILE = "points.json"
+MEMORY_FILE = "memory.json"
+DAILY_FILE = "daily.json"
 
 def load_json(f):
-    if not os.path.exists(f): return {}
+    if not os.path.exists(f):
+        return {}
     try:
-        with open(f, "r", encoding="utf-8") as j: return json.load(j)
-    except: return {}
+        with open(f, "r", encoding="utf-8") as j:
+            return json.load(j)
+    except Exception:
+        return {}
 
 def save_json(f, d):
     try:
-        with open(f, "w", encoding="utf-8") as j: json.dump(d, j, ensure_ascii=False, indent=2)
-    except Exception as e: logging.error(f"Save error: {e}")
+        with open(f, "w", encoding="utf-8") as j:
+            json.dump(d, j, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logging.error(f"Error saving {f}: {e}")
 
-def load_points(): return load_json(POINTS_FILE)
-def save_points(d): save_json(POINTS_FILE, d)
+def load_points():
+    return load_json(POINTS_FILE)
+
+def save_points(d):
+    save_json(POINTS_FILE, d)
 
 def get_keyboard(uid):
     is_admin = str(uid) == str(ADMIN_ID)
     if is_admin:
-        return ReplyKeyboardMarkup([["بورانا", "اذاعة"], ["بوتاتنا", "الاحصائيات 📊"], ["تلاقي 💙", "ميزات 🚀"], ["🎁 هدية يومية", "🔗 رابط دعوتي"], ["💎 نقاطي", "🗑️ حذف آخر إذاعة"]], resize_keyboard=True)
+        return ReplyKeyboardMarkup(
+            [["بورانا", "اذاعة"], ["بوتاتنا", "الاحصائيات 📊"], ["تلاقي 💙", "ميزات 🚀"], ["🎁 هدية يومية", "🔗 رابط دعوتي"], ["💎 نقاطي", "🗑️ حذف آخر إذاعة"]],
+            resize_keyboard=True
+        )
     else:
-        return ReplyKeyboardMarkup([["بورانا", "بوتاتنا"], ["تلاقي 💙", "ميزات 🚀"], ["🎁 هدية يومية", "🔗 رابط دعوتي"], ["💎 نقاطي"]], resize_keyboard=True)
+        return ReplyKeyboardMarkup(
+            [["بورانا", "بوتاتنا"], ["تلاقي 💙", "ميزات 🚀"], ["🎁 هدية يومية", "🔗 رابط دعوتي"], ["💎 نقاطي"]],
+            resize_keyboard=True
+        )
 
 def save_memory(uid, role, content):
     all_mem = load_json(MEMORY_FILE)
@@ -46,7 +66,8 @@ def save_memory(uid, role, content):
     save_json(MEMORY_FILE, all_mem)
 
 async def start(update: Update, context):
-    if not update.message: return
+    if not update.message:
+        return
     uid = str(update.effective_user.id)
     points = load_points()
     args = context.args
@@ -57,12 +78,18 @@ async def start(update: Update, context):
             r = points.get(ref_id, {"points": 0})
             r["points"] = r.get("points", 0) + 50
             points[ref_id] = r
-            try: await context.bot.send_message(int(ref_id), f"🎉 شخص دخل برابطك +50 نقطة! نقاطك: {r['points']}")
-            except: pass
+            try:
+                await context.bot.send_message(int(ref_id), f"🎉 شخص دخل برابطك +50 نقطة! نقاطك: {r['points']}")
+            except Exception:
+                pass
 
-    if uid not in points: points[uid] = {"points": 10}
+    if uid not in points:
+        points[uid] = {"points": 10}
     save_points(points)
-    await update.message.reply_text(f"أهلا {update.effective_user.first_name} ✅\n\n💎 نقاطك: {points[uid]['points']}\n💬 اسألني أي شي!", reply_markup=get_keyboard(uid))
+    await update.message.reply_text(
+        f"أهلا {update.effective_user.first_name} ✅\n\n💎 نقاطك: {points[uid]['points']}\n💬 اسألني أي شي!",
+        reply_markup=get_keyboard(uid)
+    )
 
 async def daily_gift(update: Update, context):
     uid = str(update.effective_user.id)
@@ -90,13 +117,17 @@ async def points_cmd(update: Update, context):
     await update.message.reply_text(f"💎 نقاطك: {pts}", reply_markup=get_keyboard(uid))
 
 async def chat_handler(update: Update, context):
-    if not update.message or not update.message.text: return
+    if not update.message or not update.message.text:
+        return
     uid = str(update.effective_user.id)
     text = update.message.text.strip()
 
-    if text == "🎁 هدية يومية": return await daily_gift(update, context)
-    if text == "🔗 رابط دعوتي": return await invite_link(update, context)
-    if text == "💎 نقاطي": return await points_cmd(update, context)
+    if text == "🎁 هدية يومية":
+        return await daily_gift(update, context)
+    if text == "🔗 رابط دعوتي":
+        return await invite_link(update, context)
+    if text == "💎 نقاطي":
+        return await points_cmd(update, context)
     
     if text in ["بورانا", "بوتاتنا", "تلاقي 💙", "ميزات 🚀", "الاحصائيات 📊", "اذاعة", "🗑️ حذف آخر إذاعة"]:
         if text == "بوتاتنا": 
@@ -104,7 +135,7 @@ async def chat_handler(update: Update, context):
         return await update.message.reply_text("✅ تم", reply_markup=get_keyboard(uid))
 
     if not client:
-        return await update.message.reply_text("❌ لم يتم العثور على GROQ_API_KEY في متغيرات البيئة!", reply_markup=get_keyboard(uid))
+        return await update.message.reply_text("❌ مفتاح GROQ_API_KEY غير موجود في متغيرات البيئة!", reply_markup=get_keyboard(uid))
 
     await context.bot.send_chat_action(update.effective_chat.id, "typing")
     try:
@@ -136,7 +167,7 @@ async def chat_handler(update: Update, context):
 
 def main():
     if not BOT_TOKEN:
-        print("❌ CRITICAL ERROR: BOT_TOKEN Environment Variable is Missing!")
+        print("❌ CRITICAL ERROR: BOT_TOKEN is Missing!")
         return
 
     app = Application.builder().token(BOT_TOKEN).build()
@@ -148,4 +179,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
+    
