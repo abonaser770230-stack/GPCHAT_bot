@@ -1,53 +1,56 @@
-async def chat_handler(update: Update, context):
-    if not update.message or not update.message.text: 
-        return
-    
-    uid = str(update.effective_user.id)
+import os, logging, asyncio
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from groq import Groq
+
+logging.basicConfig(level=logging.INFO)
+
+# جلب المفاتيح من متغيرات البيئة
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+GROQ_KEY = os.getenv("GROQ_API_KEY") or os.getenv("GROQ_API")
+
+client = Groq(api_key=GROQ_KEY) if GROQ_KEY else None
+
+async def reply_ai(update: Update, context):
+    if not update.message or not update.message.text: return
     text = update.message.text.strip()
 
-    # معالجة الأزرار العادية أولاً
-    if text == "🎁 هدية يومية": return await daily_gift(update, context)
-    if text == "🔗 رابط دعوتي": return await invite_link(update, context)
-    if text == "💎 نقاطي": return await points_cmd(update, context)
-    
-    if text in ["بورانا", "بوتاتنا", "تلاقي 💙", "ميزات 🚀", "الاحصائيات 📊", "اذاعة", "🗑️ حذف آخر إذاعة"]:
-        if text == "بوتاتنا": 
-            return await update.message.reply_text("🤖 بوتاتنا:\nhttps://t.me/FFZZ5", reply_markup=get_keyboard(uid))
-        return await update.message.reply_text("✅ تم", reply_markup=get_keyboard(uid))
-
-    # التحقق من وجود مفتاح API
     if not client:
-        return await update.message.reply_text("❌ لم يتم التعرف على مفتاح GROQ_API_KEY في السيرفر!", reply_markup=get_keyboard(uid))
+        return await update.message.reply_text("❌ مفتاح GROQ_API_KEY غير موجود في متغيرات البيئة!")
 
-    # إرسال جاري الكتابة
     await context.bot.send_chat_action(update.effective_chat.id, "typing")
-    
-    try:
-        all_mem = load_json(MEMORY_FILE).get(uid, [])
-        msgs = [{"role": "system", "content": "أنت Gotchat، مساعد ذكي يتكلم عربي. جاوب باختصار ومفيد."}]
-        
-        for m in all_mem[-6:]:
-            msgs.append({"role": m["role"], "content": m["content"]})
-        msgs.append({"role": "user", "content": text})
 
-        # تشغيل طلب Groq في thread منفصل لمنع تجميد البوت
+    try:
+        # استخدام موديل Groq المعتمد
         loop = asyncio.get_event_loop()
         comp = await loop.run_in_executor(
-            None, 
+            None,
             lambda: client.chat.completions.create(
-                model="llama-3.1-8b-instant", 
-                messages=msgs, 
+                model="llama-3.1-8b-instant",
+                messages=[
+                    {"role": "system", "content": "أنت مساعد ذكي تجيب باختصار وباللغة العربية."},
+                    {"role": "user", "content": text}
+                ],
                 temperature=0.7
             )
         )
-        
         reply = comp.choices[0].message.content
-
-        save_memory(uid, "user", text)
-        save_memory(uid, "assistant", reply)
-        await update.message.reply_text(reply, reply_markup=get_keyboard(uid))
+        await update.message.reply_text(reply)
 
     except Exception as e:
-        logging.error(f"Groq Error: {e}")
-        # إرسال تفاصيل الخطأ لتدمير تعليق "يكتب..." ومعرفة الخلل فوراً
-        await update.message.reply_text(f"⚠️ حصل خطأ أثناء الاتصال بالذكاء الاصطناعي:\n`{e}`", parse_mode="Markdown", reply_markup=get_keyboard(uid))
+        logging.error(f"Error: {e}")
+        # إرسال نص الخطأ بالتفصيل للدردشة لتحديد المشكلة فوراً
+        await update.message.reply_text(f"❌ حدث خطأ أثناء الاتصال بالذكاء الاصطناعي:\n\n`{str(e)}`", parse_mode="Markdown")
+
+def main():
+    if not BOT_TOKEN:
+        print("❌ لم يتم العثور على BOT_TOKEN!")
+        return
+
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply_ai))
+    print("🤖 البوت التجريبي يعمل الآن...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
